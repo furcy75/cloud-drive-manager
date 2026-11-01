@@ -12,7 +12,18 @@
       background: #f4f6f8;
       color: #333;
     }
-    h2 { margin-top: 0; }
+    h2 { margin: 0 0 15px 0; }
+    .alert-banner {
+      display: none;
+      padding: 12px 16px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+      font-size: 14px;
+      line-height: 1.4;
+    }
+    .alert-warning { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
+    .alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+    
     .card {
       background: white;
       border-radius: 8px;
@@ -34,6 +45,13 @@
     .btn-green { background: #2e7d32; color: white; }
     .btn-red { background: #c62828; color: white; }
     .btn-blue { background: #1976d2; color: white; }
+    .empty-state {
+      background: white;
+      padding: 30px;
+      border-radius: 8px;
+      text-align: center;
+      color: #666;
+    }
     .modal {
       display: none;
       position: fixed;
@@ -41,16 +59,18 @@
       background: rgba(0,0,0,0.5);
       justify-content: center;
       align-items: center;
+      z-index: 999;
     }
     .modal-content {
       background: white;
-      padding: 20px;
+      padding: 24px;
       border-radius: 8px;
-      width: 440px;
+      width: 480px;
+      max-width: 90%;
       box-sizing: border-box;
     }
     .form-group { margin-bottom: 12px; }
-    .form-group label { display: block; margin-bottom: 4px; font-weight: 500; }
+    .form-group label { display: block; margin-bottom: 4px; font-weight: 500; font-size: 13px; }
     .form-group input, .form-group select {
       width: 100%;
       padding: 8px;
@@ -62,50 +82,65 @@
 </head>
 <body>
   <h2>Gestionnaire de Disques Cloud</h2>
-  <button class="btn-blue" onclick="openModal()">+ Ajouter un Disque</button>
-  <div id="drive-list" style="margin-top: 20px;"></div>
 
-  <!-- Modal d'ajout de disque -->
+  <!-- Bannière d'état des composants rclone/pilotes -->
+  <div id="system-alert" class="alert-banner"></div>
+
+  <button class="btn-blue" id="btn-open-modal">+ Ajouter un Disque</button>
+
+  <div id="drive-list" style="margin-top: 20px;">
+    <div class="empty-state">Chargement de vos disques...</div>
+  </div>
+
+  <!-- Fenêtre de paramétrage du disque -->
   <div id="modal" class="modal">
     <div class="modal-content">
-      <h3>Nouveau Disque Cloud</h3>
+      <h3 style="margin-top:0;">Configuration du Disque Cloud</h3>
       <div class="form-group">
         <label>Nom personnalisé du disque :</label>
-        <input type="text" id="label" value="Stockage_Pro">
+        <input type="text" id="label" placeholder="ex: Mon Drive Pro">
       </div>
       <div class="form-group">
-        <label>Remote Rclone :</label>
+        <label>Type de stockage :</label>
+        <select id="provider_type">
+          <option value="Google Drive">Google Drive</option>
+          <option value="Scaleway S3">Scaleway S3</option>
+          <option value="Autre / Rclone">Autre stockage Rclone</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Nom du remote dans Rclone :</label>
         <input type="text" id="remote_name" placeholder="ex: gdrive ou scaleway_s3">
       </div>
       <div class="form-group">
         <label>Point de montage / Lettre :</label>
-        <input type="text" id="mount_point" placeholder="/home/user/Drives/Pro ou G:">
+        <input type="text" id="mount_point" placeholder="ex: G: sous Windows, ou ~/Drives/Pro sous Linux">
       </div>
       <div class="form-group">
         <label>Dossier local de synchronisation :</label>
-        <input type="text" id="sync_dir" placeholder="/home/user/Desktop/Sync">
+        <input type="text" id="sync_dir" placeholder="ex: C:\Users\Nom\Desktop\Sync ou ~/Desktop/Sync">
       </div>
       <div class="form-group">
         <label>Sens de synchro :</label>
         <select id="sync_direction">
-          <option value="local_to_remote">Local -> Cloud</option>
-          <option value="remote_to_local">Cloud -> Local</option>
+          <option value="local_to_remote">Local vers Cloud (Upload)</option>
+          <option value="remote_to_local">Cloud vers Local (Download)</option>
         </select>
       </div>
       <div class="form-group">
         <label>Gestion des conflits :</label>
         <select id="conflict_mode">
-          <option value="copy">Copie simple</option>
-          <option value="sync">Miroir strict</option>
-          <option value="backup">Backup des remplacements</option>
+          <option value="copy">Copie simple (Pas d'écrasement destructif)</option>
+          <option value="sync">Miroir strict (Supprime la cible pour refléter la source)</option>
+          <option value="backup">Backup des remplacements (dans _backup)</option>
         </select>
       </div>
       <div class="form-group">
-        <label><input type="checkbox" id="auto_mount"> Monter au boot (sans UI)</label>
+        <label><input type="checkbox" id="auto_mount"> Monter au boot du système (sans ouvrir l'application)</label>
       </div>
-      <div style="text-align: right; margin-top: 15px;">
-        <button class="btn-blue" onclick="submitDrive()">Enregistrer</button>
-        <button onclick="closeModal()">Annuler</button>
+      <div style="text-align: right; margin-top: 20px;">
+        <button class="btn-blue" id="btn-submit">Enregistrer</button>
+        <button id="btn-cancel">Annuler</button>
       </div>
     </div>
   </div>

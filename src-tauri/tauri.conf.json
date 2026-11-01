@@ -4,16 +4,15 @@
   "version": "0.1.0",
   "identifier": "com.clouddrive.manager",
   "build": {
-    "beforeDevCommand": "",
-    "beforeBuildCommand": "",
     "frontendDist": "../dist"
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
         "title": "Cloud Drive Manager",
-        "width": 800,
-        "height": 600
+        "width": 860,
+        "height": 640
       }
     ],
     "security": {
@@ -22,6 +21,7 @@
   },
   "bundle": {
     "active": false,
-    "targets": []
+    "targets": [],
+    "icon": []
   }
 }

@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
-use tauri::Manager;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct CloudDrive {
@@ -18,6 +17,13 @@ pub struct CloudDrive {
     pub sync_direction: String,
     pub conflict_mode: String,
     pub auto_mount: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SystemCheckStatus {
+    pub rclone_installed: bool,
+    pub fuse_or_winfsp_installed: bool,
+    pub message: String,
 }
 
 fn get_db_path() -> PathBuf {
@@ -45,6 +51,40 @@ fn get_db_connection() -> Result<Connection, String> {
         [],
     ).map_err(|e| e.to_string())?;
     Ok(conn)
+}
+
+#[tauri::command]
+fn check_system_dependencies() -> SystemCheckStatus {
+    let rclone_ok = Command::new("rclone").arg("version").output().is_ok();
+
+    let driver_ok = if cfg!(target_os = "windows") {
+        let p1 = PathBuf::from("C:\\Program Files\\WinFsp");
+        let p2 = PathBuf::from("C:\\Program Files (x86)\\WinFsp");
+        p1.exists() || p2.exists()
+    } else {
+        Command::new("mountpoint").arg("-q").output().is_ok()
+            || Command::new("fusermount3").arg("-V").output().is_ok()
+            || Command::new("fusermount").arg("-V").output().is_ok()
+    };
+
+    let msg = match (rclone_ok, driver_ok) {
+        (true, true) => "Système prêt. Rclone et le pilote FUSE/WinFsp sont détectés.".into(),
+        (false, true) => "Rclone est manquant ! Veuillez installer rclone (ou le placer dans le PATH).".into(),
+        (true, false) => {
+            if cfg!(target_os = "windows") {
+                "WinFsp est manquant ! Vous devez installer WinFsp pour pouvoir monter des disques sous Windows.".into()
+            } else {
+                "FUSE (fuse3) est introuvable. Installez fuse3 via votre gestionnaire de paquets.".into()
+            }
+        }
+        (false, false) => "Rclone ET le pilote de montage (WinFsp/FUSE) sont manquants sur cette machine.".into(),
+    };
+
+    SystemCheckStatus {
+        rclone_installed: rclone_ok,
+        fuse_or_winfsp_installed: driver_ok,
+        message: msg,
+    }
 }
 
 #[tauri::command]
@@ -205,29 +245,7 @@ fn run_sync(drive: CloudDrive) -> Result<String, String> {
         .map_err(|e| e.to_string())?;
 
     if output.status.success() {
-        Ok("Synchronisation réussie".to_string())
-    } else {
-        Err(String::from_utf8_lossy(&output.stderr).to_string())
-    }
-}
-
-#[tauri::command]
-fn setup_scaleway_remote(name: String, ak: String, sk: String, region: String, endpoint: String) -> Result<(), String> {
-    let output = Command::new("rclone")
-        .args([
-            "config", "create", &name, "s3",
-            "provider", "Scaleway",
-            "access_key_id", &ak,
-            "secret_access_key", &sk,
-            "region", &region,
-            "endpoint", &endpoint,
-            "acl", "private",
-        ])
-        .output()
-        .map_err(|e| e.to_string())?;
-
-    if output.status.success() {
-        Ok(())
+        Ok("Synchronisation terminée avec succès".to_string())
     } else {
         Err(String::from_utf8_lossy(&output.stderr).to_string())
     }
@@ -279,13 +297,13 @@ fn sync_system_automount(drive: &CloudDrive) {
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
+            check_system_dependencies,
             get_drives,
             save_drive,
             delete_drive,
             check_mount,
             toggle_mount,
-            run_sync,
-            setup_scaleway_remote
+            run_sync
         ])
         .run(tauri::generate_context!())
         .expect("Erreur lors de l'exécution de l'application Tauri");
