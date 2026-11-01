@@ -1,4 +1,4 @@
-name: Build Cloud Drive Manager
+name: Build Windows Portable
 
 on:
   push:
@@ -6,17 +6,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-tauri:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: "ubuntu-22.04"
-            binary_name: "cloud-drive-manager"
-          - platform: "windows-latest"
-            binary_name: "cloud-drive-manager.exe"
-
-    runs-on: ${{ matrix.platform }}
+  build-windows:
+    runs-on: windows-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -29,23 +20,16 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install Linux dependencies
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt update
-          sudo apt install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-
-      - name: Install frontend dependencies
+      - name: Install dependencies
         run: npm install
 
-      - name: Build Tauri App
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Compilation directe de l'exécutable Rust/Tauri sans créer d'installeur lourd
+      - name: Build Portable EXE
+        run: npm run tauri build -- --no-bundle
 
-      # Téléchargement unique de l'exécutable portable autonome
-      - name: Upload Portable Binary
+      # Récupération unique du .exe portable brut
+      - name: Upload Windows EXE
         uses: actions/upload-artifact@v4
         with:
-          name: portable-${{ matrix.platform }}
-          path: src-tauri/target/release/${{ matrix.binary_name }}
+          name: cloud-drive-manager-portable
+          path: src-tauri/target/release/cloud-drive-manager.exe
