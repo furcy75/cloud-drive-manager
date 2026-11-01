@@ -12,7 +12,9 @@ jobs:
       matrix:
         include:
           - platform: "ubuntu-22.04"
+            binary_name: "cloud-drive-manager"
           - platform: "windows-latest"
+            binary_name: "cloud-drive-manager.exe"
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -41,10 +43,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload Build Artifacts
+      # Téléchargement unique de l'exécutable portable autonome
+      - name: Upload Portable Binary
         uses: actions/upload-artifact@v4
         with:
-          name: binaries-${{ matrix.platform }}
-          path: |
-            src-tauri/target/release/bundle/
-            src-tauri/target/release/*.exe
+          name: portable-${{ matrix.platform }}
+          path: src-tauri/target/release/${{ matrix.binary_name }}
