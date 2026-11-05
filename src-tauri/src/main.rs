@@ -11,11 +11,13 @@ pub struct CloudDrive {
     pub id: String,
     pub label: String,
     pub remote_name: String,
+    pub remote_subpath: String, // Nouveau: sous-dossier sur le Drive (ex: "Documents" ou vide pour racine)
     pub provider_type: String,
     pub mount_point: String,
     pub sync_local_dir: String,
     pub sync_direction: String, // "bidirectional", "local_to_remote", "remote_to_local"
     pub conflict_mode: String,
+    pub streaming_mode: bool,   // Nouveau: streaming direct à la volée sans mise en cache locale lourde
     pub auto_mount: bool,
 }
 
@@ -41,15 +43,22 @@ fn get_db_connection() -> Result<Connection, String> {
             id TEXT PRIMARY KEY,
             label TEXT NOT NULL,
             remote_name TEXT NOT NULL,
+            remote_subpath TEXT NOT NULL DEFAULT '',
             provider_type TEXT NOT NULL,
             mount_point TEXT NOT NULL,
             sync_local_dir TEXT NOT NULL,
             sync_direction TEXT NOT NULL,
             conflict_mode TEXT NOT NULL,
+            streaming_mode INTEGER NOT NULL DEFAULT 1,
             auto_mount INTEGER NOT NULL DEFAULT 0
         )",
         [],
     ).map_err(|e| e.to_string())?;
+
+    // Migration automatique si la table existait sans les nouvelles colonnes
+    conn.execute("ALTER TABLE drives ADD COLUMN remote_subpath TEXT NOT NULL DEFAULT ''", []).ok();
+    conn.execute("ALTER TABLE drives ADD COLUMN streaming_mode INTEGER NOT NULL DEFAULT 1", []).ok();
+
     Ok(conn)
 }
 
@@ -68,16 +77,10 @@ fn check_system_dependencies() -> SystemCheckStatus {
     };
 
     let msg = match (rclone_ok, driver_ok) {
-        (true, true) => "Système prêt. Rclone et le pilote de montage sont installés.".into(),
-        (false, true) => "Rclone est manquant ! Cliquez ci-dessous pour l'installer.".into(),
-        (true, false) => {
-            if cfg!(target_os = "windows") {
-                "WinFsp est manquant. Téléchargez-le pour activer le montage de lecteurs Windows.".into()
-            } else {
-                "FUSE (fuse3) est manquant pour le montage sous Linux.".into()
-            }
-        }
-        (false, false) => "Rclone et le pilote de montage sont manquants.".into(),
+        (true, true) => "Système opérationnel : Rclone et pilote de montage détectés.".into(),
+        (false, true) => "Rclone est manquant. Cliquez sur 'Installer Rclone'.".into(),
+        (true, false) => "Pilote WinFsp/FUSE introuvable. Installez WinFsp sous Windows.".into(),
+        (false, false) => "Rclone et WinFsp sont manquants.".into(),
     };
 
     SystemCheckStatus {
@@ -106,7 +109,7 @@ fn install_rclone() -> Result<String, String> {
         if output.status.success() {
             Ok("Rclone a été installé avec succès.".into())
         } else {
-            Err(format!("Échec de l'installation: {}", String::from_utf8_lossy(&output.stderr)))
+            Err(format!("Échec installation: {}", String::from_utf8_lossy(&output.stderr)))
         }
     } else {
         let output = Command::new("sh")
@@ -123,7 +126,34 @@ fn install_rclone() -> Result<String, String> {
     }
 }
 
-// Assistant : crée un remote Scaleway S3 directement dans la config Rclone
+// Nouveau : lister les sous-dossiers distants d'un remote Google Drive ou S3
+#[tauri::command]
+fn list_remote_folders(remote_name: String, base_path: String) -> Result<Vec<String>, String> {
+    let target = if base_path.is_empty() {
+        format!("{}:", remote_name)
+    } else {
+        format!("{}:{}", remote_name, base_path.trim_matches('/'))
+    };
+
+    let output = Command::new("rclone")
+        .args(["lsf", &target, "--dirs-only", "--max-depth", "1"])
+        .output()
+        .map_err(|e| format!("Erreur rclone: {}", e))?;
+
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).to_string());
+    }
+
+    let text = String::from_utf8_lossy(&output.stdout);
+    let folders: Vec<String> = text
+        .lines()
+        .map(|l| l.trim_end_matches('/').to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+
+    Ok(folders)
+}
+
 #[tauri::command]
 fn configure_scaleway_remote(remote_name: String, access_key: String, secret_key: String, region: String, endpoint: String) -> Result<String, String> {
     let output = Command::new("rclone")
@@ -148,37 +178,38 @@ fn configure_scaleway_remote(remote_name: String, access_key: String, secret_key
     }
 }
 
-// Assistant : lance l'authentification Google OAuth dans le navigateur
 #[tauri::command]
 fn start_google_drive_oauth(remote_name: String) -> Result<String, String> {
-    // Lance la commande de création qui ouvrira automatiquement le navigateur
-    let child = Command::new("rclone")
+    Command::new("rclone")
         .args(["config", "create", &remote_name, "drive", "scope", "drive"])
         .spawn()
         .map_err(|e| format!("Impossible d'ouvrir le navigateur: {}", e))?;
 
-    Ok(format!("La page d'autorisation Google s'est ouverte dans votre navigateur. Validez l'accès avec votre compte Google, puis enregistrez le disque ici."))
+    Ok("La fenêtre d'autorisation Google s'est ouverte dans votre navigateur. Validez l'accès puis enregistrez le disque.".into())
 }
 
 #[tauri::command]
 fn get_drives() -> Result<Vec<CloudDrive>, String> {
     let conn = get_db_connection()?;
     let mut stmt = conn
-        .prepare("SELECT id, label, remote_name, provider_type, mount_point, sync_local_dir, sync_direction, conflict_mode, auto_mount FROM drives")
+        .prepare("SELECT id, label, remote_name, remote_subpath, provider_type, mount_point, sync_local_dir, sync_direction, conflict_mode, streaming_mode, auto_mount FROM drives")
         .map_err(|e| e.to_string())?;
 
     let rows = stmt
         .query_map([], |row| {
-            let auto_int: i32 = row.get(8)?;
+            let stream_int: i32 = row.get(9)?;
+            let auto_int: i32 = row.get(10)?;
             Ok(CloudDrive {
                 id: row.get(0)?,
                 label: row.get(1)?,
                 remote_name: row.get(2)?,
-                provider_type: row.get(3)?,
-                mount_point: row.get(4)?,
-                sync_local_dir: row.get(5)?,
-                sync_direction: row.get(6)?,
-                conflict_mode: row.get(7)?,
+                remote_subpath: row.get(3)?,
+                provider_type: row.get(4)?,
+                mount_point: row.get(5)?,
+                sync_local_dir: row.get(6)?,
+                sync_direction: row.get(7)?,
+                conflict_mode: row.get(8)?,
+                streaming_mode: stream_int != 0,
                 auto_mount: auto_int != 0,
             })
         })
@@ -198,17 +229,19 @@ fn save_drive(drive: CloudDrive) -> Result<(), String> {
     let conn = get_db_connection()?;
     conn.execute(
         "INSERT OR REPLACE INTO drives 
-        (id, label, remote_name, provider_type, mount_point, sync_local_dir, sync_direction, conflict_mode, auto_mount)
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        (id, label, remote_name, remote_subpath, provider_type, mount_point, sync_local_dir, sync_direction, conflict_mode, streaming_mode, auto_mount)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         params![
             drive.id,
             drive.label,
             drive.remote_name,
+            drive.remote_subpath,
             drive.provider_type,
             drive.mount_point,
             drive.sync_local_dir,
             drive.sync_direction,
             drive.conflict_mode,
+            if drive.streaming_mode { 1 } else { 0 },
             if drive.auto_mount { 1 } else { 0 },
         ],
     ).map_err(|e| e.to_string())?;
@@ -260,15 +293,36 @@ fn toggle_mount(drive: CloudDrive) -> Result<bool, String> {
             fs::create_dir_all(&drive.mount_point).ok();
         }
 
+        let full_remote_source = if drive.remote_subpath.is_empty() {
+            format!("{}:", drive.remote_name)
+        } else {
+            format!("{}:{}", drive.remote_name, drive.remote_subpath.trim_matches('/'))
+        };
+
         let mut args = vec![
             "mount".to_string(),
-            format!("{}:", drive.remote_name),
+            full_remote_source,
             drive.mount_point.clone(),
-            "--vfs-cache-mode".to_string(),
-            "full".to_string(),
             "--volname".to_string(),
             drive.label.clone(),
         ];
+
+        // Mode Streaming direct (zéro cache de disque local, lecture directe chunk par chunk)
+        if drive.streaming_mode {
+            args.extend([
+                "--vfs-cache-mode".to_string(),
+                "off".to_string(),
+                "--vfs-read-chunk-size".to_string(),
+                "32M".to_string(),
+                "--vfs-read-chunk-size-limit".to_string(),
+                "off".to_string(),
+            ]);
+        } else {
+            args.extend([
+                "--vfs-cache-mode".to_string(),
+                "full".to_string(),
+            ]);
+        }
 
         if !cfg!(target_os = "windows") {
             args.push("--daemon".to_string());
@@ -288,44 +342,36 @@ fn run_sync(drive: CloudDrive) -> Result<String, String> {
     fs::create_dir_all(&drive.sync_local_dir).ok();
 
     let local_path = drive.sync_local_dir.clone();
-    let remote_path = format!("{}:", drive.remote_name);
+    let remote_target = if drive.remote_subpath.is_empty() {
+        format!("{}:", drive.remote_name)
+    } else {
+        format!("{}:{}", drive.remote_name, drive.remote_subpath.trim_matches('/'))
+    };
 
     let output = if drive.sync_direction == "bidirectional" {
-        // SYNCHRONISATION DOUBLE SENS (BISYNC)
-        // bisync synchronise les deux sens. --resync est utilisé en repli pour initialiser l'historique
         let res = Command::new("rclone")
-            .args(["bisync", &local_path, &remote_path, "--verbose"])
+            .args(["bisync", &local_path, &remote_target, "--verbose"])
             .output();
 
         match res {
             Ok(out) if out.status.success() => out,
             _ => {
-                // Si premier passage ou base non initialisée, initialisation propre avec --resync
                 Command::new("rclone")
-                    .args(["bisync", &local_path, &remote_path, "--resync", "--verbose"])
+                    .args(["bisync", &local_path, &remote_target, "--resync", "--verbose"])
                     .output()
                     .map_err(|e| format!("Échec bisync: {}", e))?
             }
         }
     } else {
-        // SYNCHRONISATION MONO-DIRECTIONNELLE (Local -> Cloud ou Cloud -> Local)
         let (src, dst) = if drive.sync_direction == "local_to_remote" {
-            (local_path, remote_path)
+            (local_path, remote_target)
         } else {
-            (remote_path, local_path)
+            (remote_target, local_path)
         };
 
         let mut args = vec!["rclone".to_string()];
         match drive.conflict_mode.as_str() {
             "sync" => args.extend(["sync".to_string(), src, dst]),
-            "backup" => {
-                let backup_dir = if drive.sync_direction == "local_to_remote" {
-                    format!("{}/_backup", dst)
-                } else {
-                    format!("{}/_backup", drive.sync_local_dir)
-                };
-                args.extend(["sync".to_string(), src, dst, "--backup-dir".to_string(), backup_dir]);
-            }
             _ => args.extend(["copy".to_string(), src, dst]),
         }
 
@@ -346,10 +392,23 @@ fn sync_system_automount(drive: &CloudDrive) {
     if cfg!(target_os = "windows") {
         let task_name = format!("RcloneMount_{}", drive.id);
         if drive.auto_mount {
+            let full_remote = if drive.remote_subpath.is_empty() {
+                format!("{}:", drive.remote_name)
+            } else {
+                format!("{}:{}", drive.remote_name, drive.remote_subpath.trim_matches('/'))
+            };
+
+            let cache_flag = if drive.streaming_mode {
+                "--vfs-cache-mode off --vfs-read-chunk-size 32M"
+            } else {
+                "--vfs-cache-mode full"
+            };
+
             let tr = format!(
-                "rclone mount {}: {} --vfs-cache-mode full --volname \"{}\"",
-                drive.remote_name, drive.mount_point, drive.label
+                "rclone mount {} {} {} --volname \"{}\"",
+                full_remote, drive.mount_point, cache_flag, drive.label
             );
+
             Command::new("schtasks")
                 .args(["/Create", "/F", "/TN", &task_name, "/TR", &tr, "/SC", "ONLOGON", "/RL", "HIGHEST"])
                 .output()
@@ -368,6 +427,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             check_system_dependencies,
             install_rclone,
+            list_remote_folders,
             configure_scaleway_remote,
             start_google_drive_oauth,
             get_drives,

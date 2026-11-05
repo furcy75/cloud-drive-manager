@@ -15,7 +15,7 @@
       --border: #e2e8f0;
       --success: #16a34a;
       --danger: #dc2626;
-      --warning: #d97706;
+      --live-purple: #7c3aed;
     }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -63,8 +63,9 @@
       border-radius: 4px;
       background: #e2e8f0;
       color: #475569;
-      margin-left: 8px;
+      margin-left: 6px;
     }
+    .badge-live { background: #ede9fe; color: var(--live-purple); font-weight: 600; }
     .card-sub { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
     
     button {
@@ -92,7 +93,6 @@
       color: var(--text-muted);
     }
 
-    /* Modal Formulaire */
     .modal {
       display: none;
       position: fixed;
@@ -123,13 +123,8 @@
       box-sizing: border-box;
       font-size: 14px;
     }
-    .form-group input:focus, .form-group select:focus {
-      outline: none;
-      border-color: var(--primary);
-    }
     .help-text { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
 
-    /* Assistant box */
     .assistant-box {
       background: #f1f5f9;
       border: 1px solid #e2e8f0;
@@ -138,6 +133,27 @@
       margin-bottom: 14px;
     }
     .assistant-box h4 { margin: 0 0 6px 0; font-size: 13px; }
+
+    .subfolder-browser {
+      margin-top: 6px;
+      padding: 8px;
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      max-height: 120px;
+      overflow-y: auto;
+      display: none;
+    }
+    .subfolder-item {
+      padding: 4px 8px;
+      cursor: pointer;
+      font-size: 13px;
+      border-radius: 4px;
+    }
+    .subfolder-item:hover {
+      background: #e0e7ff;
+      color: var(--primary);
+    }
   </style>
 </head>
 <body>
@@ -156,84 +172,95 @@
     <div class="empty-state">Chargement de vos disques...</div>
   </div>
 
-  <!-- Fenêtre d'ajout guidé -->
+  <!-- Formulaire d'ajout -->
   <div id="modal" class="modal">
     <div class="modal-content">
-      <h3 style="margin-top:0;">Nouveau Disque Cloud</h3>
+      <h3 style="margin-top:0;">Configuration du Disque Cloud</h3>
 
-      <!-- Étape 1 : Choix du Cloud -->
       <div class="form-group">
         <label>Fournisseur Cloud :</label>
         <select id="provider_type">
-          <option value="Google Drive">Google Drive (OAuth automatique)</option>
+          <option value="Google Drive">Google Drive (OAuth & Sélection de dossier)</option>
           <option value="Scaleway S3">Scaleway S3 (Clés API)</option>
-          <option value="Autre">Autre compte Rclone déjà configuré</option>
+          <option value="Autre">Autre stockage Rclone</option>
         </select>
       </div>
 
       <!-- Assistant Google Drive -->
       <div id="guide-gdrive" class="assistant-box">
-        <h4>Connexion simple à Google Drive</h4>
-        <p class="help-text">Cliquez sur le bouton pour autoriser votre compte Google directement dans votre navigateur web.</p>
+        <h4>1. Connecter Google Drive</h4>
+        <p class="help-text">Cliquez pour valider l'accès Google dans votre navigateur :</p>
         <div style="display:flex; gap:8px;">
           <input type="text" id="gdrive_remote_name" value="mon_gdrive" placeholder="Nom du remote" style="width:50%;">
           <button type="button" class="btn-secondary" id="btn-oauth-gdrive">Connecter Google</button>
         </div>
+
+        <h4 style="margin-top: 12px;">2. Sélection du dossier sur le Drive</h4>
+        <div style="display:flex; gap:8px;">
+          <input type="text" id="remote_subpath" placeholder="Racine (tout le drive) ou nom de dossier">
+          <button type="button" class="btn-secondary" id="btn-browse-folders">Parcourir</button>
+        </div>
+        <div id="folder-list" class="subfolder-browser"></div>
+        <div class="help-text">Laissez vide pour monter/synchroniser l'intégralité du Drive.</div>
       </div>
 
       <!-- Assistant Scaleway S3 -->
       <div id="guide-scaleway" class="assistant-box" style="display:none;">
         <h4>Identifiants Scaleway S3</h4>
         <div class="form-group" style="margin-bottom:8px;">
-          <input type="text" id="scw_access_key" placeholder="Access Key (SCW...)">
+          <input type="text" id="scw_access_key" placeholder="Access Key">
         </div>
         <div class="form-group" style="margin-bottom:8px;">
           <input type="password" id="scw_secret_key" placeholder="Secret Key">
         </div>
         <div style="display:flex; gap:8px;">
-          <input type="text" id="scw_region" value="fr-par" placeholder="Région (ex: fr-par)">
-          <button type="button" class="btn-secondary" id="btn-save-scw">Valider clés S3</button>
+          <input type="text" id="scw_region" value="fr-par" placeholder="Région">
+          <button type="button" class="btn-secondary" id="btn-save-scw">Valider clés</button>
         </div>
       </div>
 
-      <!-- Champs généraux simplifiés -->
       <div class="form-group">
-        <label>Nom d'affichage du disque :</label>
-        <input type="text" id="label" placeholder="ex: Google Drive Pro">
+        <label>Nom d'affichage :</label>
+        <input type="text" id="label" placeholder="ex: Google Drive Perso">
       </div>
 
       <div class="form-group">
-        <label>Remote Rclone sélectionné :</label>
-        <input type="text" id="remote_name" placeholder="ex: mon_gdrive ou mon_s3">
-        <div class="help-text">Rempli automatiquement par les assistants ci-dessus.</div>
+        <label>Remote Rclone interne :</label>
+        <input type="text" id="remote_name" placeholder="ex: mon_gdrive">
       </div>
 
       <div class="form-group">
         <label>Lettre de lecteur (Windows) :</label>
         <input type="text" id="mount_point" value="G:">
-        <div class="help-text">Une lettre libre comme G:, H:, S:</div>
       </div>
 
-      <div class="form-group">
-        <label>Dossier local de synchronisation :</label>
-        <input type="text" id="sync_dir" placeholder="C:\Users\VotreNom\Documents\CloudSync">
-      </div>
-
-      <!-- Sens de synchronisation avec Double Sens -->
-      <div class="form-group">
-        <label>Sens de la synchronisation :</label>
-        <select id="sync_direction">
-          <option value="bidirectional" selected>Double sens (Bidirectionnel / Miroir bilatéral)</option>
-          <option value="local_to_remote">Local -> Cloud uniquement (Sauvegarde)</option>
-          <option value="remote_to_local">Cloud -> Local uniquement (Téléchargement)</option>
-        </select>
-        <div class="help-text" id="sync_help">
-          En <b>double sens</b>, toute modification locale monte sur le Cloud, et toute modification sur le Cloud descend sur votre PC.
+      <!-- Option Mode Live / Streaming -->
+      <div class="form-group" style="background:#f5f3ff; border:1px solid #ddd6fe; padding:12px; border-radius:8px;">
+        <label style="color:var(--live-purple); display:flex; align-items:center; cursor:pointer;">
+          <input type="checkbox" id="streaming_mode" checked style="width:auto; margin-right:8px;">
+          <strong>Mode Live / Streaming direct</strong>
+        </label>
+        <div class="help-text" style="color:#5b21b6;">
+          Les fichiers restent sur le Cloud et sont <b>streamés à la volée</b> lorsque vous les lisez (vidéos, musiques, documents) <b>sans occuper d'espace sur votre disque dur</b>.
         </div>
       </div>
 
       <div class="form-group">
-        <label><input type="checkbox" id="auto_mount" checked> Monter automatiquement ce disque au démarrage du PC</label>
+        <label>Dossier local de synchronisation (Optionnel) :</label>
+        <input type="text" id="sync_dir" placeholder="ex: C:\Users\Nom\CloudSync">
+      </div>
+
+      <div class="form-group">
+        <label>Sens de la synchronisation :</label>
+        <select id="sync_direction">
+          <option value="bidirectional" selected>Double sens (Bidirectionnel complet)</option>
+          <option value="local_to_remote">Local -> Cloud</option>
+          <option value="remote_to_local">Cloud -> Local</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label><input type="checkbox" id="auto_mount" checked> Monter automatiquement au démarrage du PC</label>
       </div>
 
       <div style="text-align: right; margin-top: 20px;">
@@ -293,7 +320,7 @@
       try {
         const drives = await invoke("get_drives");
         if (!drives || drives.length === 0) {
-          list.innerHTML = '<div class="empty-state">Aucun disque configuré.<br>Cliquez sur <b>"+ Ajouter un Disque"</b> pour commencer.</div>';
+          list.innerHTML = '<div class="empty-state">Aucun disque configuré.<br>Cliquez sur <b>"+ Ajouter un Disque"</b>.</div>';
           return;
         }
 
@@ -303,16 +330,15 @@
           const card = document.createElement("div");
           card.className = "card";
           
-          let syncLabel = "Double sens";
-          if (d.sync_direction === "local_to_remote") syncLabel = "Local -> Cloud";
-          if (d.sync_direction === "remote_to_local") syncLabel = "Cloud -> Local";
+          let subInfo = d.remote_subpath ? `Dossier: /${d.remote_subpath}` : "Tout le Drive";
 
           card.innerHTML = `
             <div class="card-info">
               <strong>${d.label}</strong>
               <span class="badge">${d.mount_point}</span>
-              <span class="badge" style="background:#e0e7ff; color:#3730a3;">${syncLabel}</span>
-              <div class="card-sub">${d.provider_type} (${d.remote_name}) ${d.auto_mount ? '• Démarrage auto actif' : ''}</div>
+              ${d.streaming_mode ? '<span class="badge badge-live">Streaming Live</span>' : ''}
+              <span class="badge" style="background:#e0e7ff; color:#3730a3;">${d.sync_direction === 'bidirectional' ? 'Double sens' : d.sync_direction}</span>
+              <div class="card-sub">${d.provider_type} (${d.remote_name}) • ${subInfo} ${d.auto_mount ? '• Boot ON' : ''}</div>
             </div>
             <div>
               <button class="${isMounted ? 'btn-success' : 'btn-danger'}" id="mount-${d.id}">
@@ -330,7 +356,7 @@
           };
 
           document.getElementById(`sync-${d.id}`).onclick = async () => {
-            alert(`Lancement de la synchronisation (${syncLabel})...`);
+            alert(`Synchronisation lancée...`);
             try {
               const res = await invoke("run_sync", { drive: d });
               alert(res);
@@ -358,7 +384,6 @@
       document.getElementById("btn-open-modal").onclick = () => { modal.style.display = "flex"; };
       document.getElementById("btn-cancel").onclick = () => { modal.style.display = "none"; };
 
-      // Gestion dynamique de l'affichage selon le fournisseur choisi
       const providerSelect = document.getElementById("provider_type");
       const guideGdrive = document.getElementById("guide-gdrive");
       const guideScaleway = document.getElementById("guide-scaleway");
@@ -372,7 +397,7 @@
         if (val === "Scaleway S3") remoteInput.value = "scaleway_s3";
       };
 
-      // Assistant Google OAuth
+      // Assistant OAuth Google
       document.getElementById("btn-oauth-gdrive").onclick = async () => {
         const name = document.getElementById("gdrive_remote_name").value.trim() || "mon_gdrive";
         remoteInput.value = name;
@@ -384,17 +409,45 @@
         }
       };
 
-      // Assistant Scaleway S3
+      // Nouveau : Parcourir les dossiers sur le Drive
+      document.getElementById("btn-browse-folders").onclick = async () => {
+        const remote = remoteInput.value.trim() || document.getElementById("gdrive_remote_name").value.trim();
+        const browser = document.getElementById("folder-list");
+        browser.style.display = "block";
+        browser.innerHTML = "<i>Chargement des dossiers sur votre Drive...</i>";
+
+        try {
+          const folders = await invoke("list_remote_folders", { remoteName: remote, basePath: "" });
+          if (!folders || folders.length === 0) {
+            browser.innerHTML = "<i>Aucun sous-dossier trouvé (vous êtes à la racine).</i>";
+            return;
+          }
+          browser.innerHTML = '<div class="subfolder-item" style="font-weight:bold;">📁 [Racine du Drive]</div>';
+          folders.forEach(f => {
+            const div = document.createElement("div");
+            div.className = "subfolder-item";
+            div.textContent = `📁 ${f}`;
+            div.onclick = () => {
+              document.getElementById("remote_subpath").value = f;
+              browser.style.display = "none";
+            };
+            browser.appendChild(div);
+          });
+          browser.children[0].onclick = () => {
+            document.getElementById("remote_subpath").value = "";
+            browser.style.display = "none";
+          };
+        } catch(err) {
+          browser.innerHTML = `<span style="color:red;">Erreur : Vérifiez que l'accès Google est connecté (${err})</span>`;
+        }
+      };
+
+      // Assistant Scaleway
       document.getElementById("btn-save-scw").onclick = async () => {
         const accessKey = document.getElementById("scw_access_key").value.trim();
         const secretKey = document.getElementById("scw_secret_key").value.trim();
         const region = document.getElementById("scw_region").value.trim() || "fr-par";
         const endpoint = `s3.${region}.scw.cloud`;
-
-        if (!accessKey || !secretKey) {
-          alert("Veuillez saisir votre Access Key et Secret Key Scaleway.");
-          return;
-        }
 
         try {
           const msg = await invoke("configure_scaleway_remote", {
@@ -407,19 +460,7 @@
           remoteInput.value = "scaleway_s3";
           alert(msg);
         } catch (e) {
-          alert("Erreur de configuration Scaleway : " + e);
-        }
-      };
-
-      // Explications dynamiques sur le sens de synchronisation
-      document.getElementById("sync_direction").onchange = (e) => {
-        const h = document.getElementById("sync_help");
-        if (e.target.value === "bidirectional") {
-          h.innerHTML = "En <b>double sens</b>, toute modification locale monte sur le Cloud, et toute modification sur le Cloud descend sur votre PC.";
-        } else if (e.target.value === "local_to_remote") {
-          h.innerHTML = "En <b>Local -> Cloud</b>, le contenu de votre ordinateur est copié vers le Cloud sans modifier vos fichiers locaux.";
-        } else {
-          h.innerHTML = "En <b>Cloud -> Local</b>, les fichiers du Cloud sont téléchargés sur votre ordinateur.";
+          alert("Erreur Scaleway: " + e);
         }
       };
 
@@ -428,7 +469,6 @@
       checkSystem(invoke);
       refreshDrives(invoke);
 
-      // Validation et enregistrement du disque
       document.getElementById("btn-submit").onclick = async () => {
         const label = document.getElementById("label").value.trim();
         const remote = remoteInput.value.trim();
@@ -443,11 +483,13 @@
           id: "d_" + Date.now().toString(36),
           label: label,
           remote_name: remote,
+          remote_subpath: document.getElementById("remote_subpath").value.trim(),
           provider_type: providerSelect.value,
           mount_point: mount,
           sync_local_dir: document.getElementById("sync_dir").value.trim(),
           sync_direction: document.getElementById("sync_direction").value,
           conflict_mode: "copy",
+          streaming_mode: document.getElementById("streaming_mode").checked,
           auto_mount: document.getElementById("auto_mount").checked
         };
 
