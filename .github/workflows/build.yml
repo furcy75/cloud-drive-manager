@@ -12,17 +12,26 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      # 1. Mise en cache automatique de npm / node_modules
+      - name: Setup Node.js with npm cache
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: 'npm'
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      # 2. Mise en cache intelligente de Cargo (crates et binaires intermédiaires)
+      - name: Cache Rust dependencies
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
       - name: Install dependencies
         run: npm install
 
+      # Compilation incrémentale (seuls vos fichiers modifiés seront recompilés)
       - name: Build Portable EXE
         run: npm run tauri build -- --no-bundle
 
