@@ -364,28 +364,33 @@ fn run_sync(drive: CloudDrive, dry_run: bool) -> Result<String, String> {
         format!("{}:{}", drive.remote_name, drive.remote_subpath.trim_matches('/'))
     };
 
-    let mut args = Vec::new();
+    let mut args: Vec<String> = Vec::new();
 
     if drive.sync_direction == "bidirectional" {
-        args.extend(["bisync", &local_path, &remote_target, "--verbose"]);
+        args.extend([
+            "bisync".to_string(),
+            local_path,
+            remote_target,
+            "--verbose".to_string(),
+        ]);
         if dry_run {
-            args.push("--dry-run");
+            args.push("--dry-run".to_string());
         }
     } else {
         let (src, dst) = if drive.sync_direction == "local_to_remote" {
-            (local_path.clone(), remote_target.clone())
+            (local_path, remote_target)
         } else {
-            (remote_target.clone(), local_path.clone())
+            (remote_target, local_path)
         };
 
         if drive.conflict_mode == "sync" {
-            args.push("sync");
+            args.push("sync".to_string());
         } else {
-            args.push("copy");
+            args.push("copy".to_string());
         }
-        args.extend([src.as_str(), dst.as_str(), "--verbose"]);
+        args.extend([src, dst, "--verbose".to_string()]);
         if dry_run {
-            args.push("--dry-run");
+            args.push("--dry-run".to_string());
         }
     }
 
@@ -401,14 +406,22 @@ fn run_sync(drive: CloudDrive, dry_run: bool) -> Result<String, String> {
     if dry_run {
         let simulated_lines: Vec<&str> = full_log
             .lines()
-            .filter(|l| l.contains("NOTICE") || l.contains("Transferring") || l.contains("Copied") || l.contains("Deleted"))
+            .filter(|l| {
+                l.contains("NOTICE")
+                    || l.contains("Transferring")
+                    || l.contains("Copied")
+                    || l.contains("Deleted")
+            })
             .take(20)
             .collect();
 
         if simulated_lines.is_empty() {
             Ok("Simulation terminée : Aucun fichier à synchroniser (vos dossiers sont déjà parfaitement synchronisés).".into())
         } else {
-            Ok(format!("Simulation [Dry Run] réussie :\n{}", simulated_lines.join("\n")))
+            Ok(format!(
+                "Simulation [Dry Run] réussie :\n{}",
+                simulated_lines.join("\n")
+            ))
         }
     } else if output.status.success() {
         Ok("Synchronisation terminée avec succès.".into())
