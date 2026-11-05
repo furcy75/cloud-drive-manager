@@ -5,141 +5,240 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cloud Drive Manager</title>
   <style>
+    :root {
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --text: #1e293b;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --success: #16a34a;
+      --danger: #dc2626;
+      --warning: #d97706;
+    }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       margin: 0;
-      padding: 20px;
-      background: #f4f6f8;
-      color: #333;
+      padding: 24px;
+      background: var(--bg);
+      color: var(--text);
     }
-    h2 { margin: 0 0 15px 0; }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    h2 { margin: 0; font-size: 22px; font-weight: 700; }
+    
     .alert-banner {
       display: none;
       padding: 12px 16px;
-      border-radius: 6px;
+      border-radius: 8px;
       margin-bottom: 20px;
       font-size: 14px;
-      line-height: 1.4;
+      align-items: center;
+      justify-content: space-between;
     }
-    .alert-warning { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
-    .alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+    .alert-warning { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+    .alert-success { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+    
     .card {
-      background: white;
-      border-radius: 8px;
-      padding: 15px;
+      background: var(--surface);
+      border-radius: 10px;
+      padding: 16px 20px;
       margin-bottom: 12px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      border: 1px solid var(--border);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
       display: flex;
       justify-content: space-between;
       align-items: center;
     }
+    .card-info strong { font-size: 16px; color: var(--text); }
+    .badge {
+      display: inline-block;
+      font-size: 12px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: #e2e8f0;
+      color: #475569;
+      margin-left: 8px;
+    }
+    .card-sub { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+    
     button {
       padding: 8px 14px;
       border: none;
-      border-radius: 5px;
+      border-radius: 6px;
       cursor: pointer;
-      font-weight: bold;
-      margin-left: 5px;
+      font-weight: 600;
+      font-size: 13px;
+      transition: all 0.2s;
     }
-    .btn-green { background: #2e7d32; color: white; }
-    .btn-red { background: #c62828; color: white; }
-    .btn-blue { background: #1976d2; color: white; }
-    .btn-gray { background: #757575; color: white; }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-success { background: var(--success); color: white; }
+    .btn-danger { background: var(--danger); color: white; }
+    .btn-secondary { background: #e2e8f0; color: #334155; }
+    .btn-secondary:hover { background: #cbd5e1; }
+    
     .empty-state {
-      background: white;
-      padding: 30px;
-      border-radius: 8px;
+      background: var(--surface);
+      padding: 40px;
+      border-radius: 10px;
+      border: 1px dashed var(--border);
       text-align: center;
-      color: #666;
+      color: var(--text-muted);
     }
+
+    /* Modal Formulaire */
     .modal {
       display: none;
       position: fixed;
       inset: 0;
-      background: rgba(0,0,0,0.5);
+      background: rgba(15, 23, 42, 0.5);
+      backdrop-filter: blur(2px);
       justify-content: center;
       align-items: center;
-      z-index: 999;
+      z-index: 1000;
     }
     .modal-content {
-      background: white;
+      background: var(--surface);
+      border-radius: 12px;
+      width: 520px;
+      max-width: 95%;
+      max-height: 90vh;
+      overflow-y: auto;
       padding: 24px;
-      border-radius: 8px;
-      width: 480px;
-      max-width: 90%;
-      box-sizing: border-box;
+      box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
     }
-    .form-group { margin-bottom: 12px; }
-    .form-group label { display: block; margin-bottom: 4px; font-weight: 500; font-size: 13px; }
+    .form-group { margin-bottom: 14px; }
+    .form-group label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px; }
     .form-group input, .form-group select {
       width: 100%;
-      padding: 8px;
+      padding: 9px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
       box-sizing: border-box;
-      border: 1px solid #ccc;
-      border-radius: 4px;
+      font-size: 14px;
     }
+    .form-group input:focus, .form-group select:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+    .help-text { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+
+    /* Assistant box */
+    .assistant-box {
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 14px;
+    }
+    .assistant-box h4 { margin: 0 0 6px 0; font-size: 13px; }
   </style>
 </head>
 <body>
-  <h2>Gestionnaire de Disques Cloud</h2>
 
-  <div id="system-alert" class="alert-banner"></div>
-
-  <button class="btn-blue" id="btn-open-modal">+ Ajouter un Disque</button>
-
-  <div id="drive-list" style="margin-top: 20px;">
-    <div class="empty-state">Chargement des lecteurs...</div>
+  <div class="header">
+    <h2>Gestionnaire de Disques Cloud</h2>
+    <button class="btn-primary" id="btn-open-modal">+ Ajouter un Disque</button>
   </div>
 
-  <!-- Modal de configuration -->
+  <div id="system-alert" class="alert-banner">
+    <span id="alert-text">Diagnostic du système...</span>
+    <button id="btn-install-rclone" class="btn-primary" style="display:none; padding:4px 10px;">Installer Rclone</button>
+  </div>
+
+  <div id="drive-list">
+    <div class="empty-state">Chargement de vos disques...</div>
+  </div>
+
+  <!-- Fenêtre d'ajout guidé -->
   <div id="modal" class="modal">
     <div class="modal-content">
-      <h3 style="margin-top:0;">Paramètres du Lecteur Cloud</h3>
+      <h3 style="margin-top:0;">Nouveau Disque Cloud</h3>
+
+      <!-- Étape 1 : Choix du Cloud -->
       <div class="form-group">
-        <label>Nom du volume :</label>
-        <input type="text" id="label" placeholder="ex: Mon Google Drive">
-      </div>
-      <div class="form-group">
-        <label>Type de cloud :</label>
+        <label>Fournisseur Cloud :</label>
         <select id="provider_type">
-          <option value="Google Drive">Google Drive</option>
-          <option value="Scaleway S3">Scaleway S3</option>
-          <option value="Autre Rclone">Autre stockage Rclone</option>
+          <option value="Google Drive">Google Drive (OAuth automatique)</option>
+          <option value="Scaleway S3">Scaleway S3 (Clés API)</option>
+          <option value="Autre">Autre compte Rclone déjà configuré</option>
         </select>
       </div>
-      <div class="form-group">
-        <label>Remote Rclone associé :</label>
-        <input type="text" id="remote_name" placeholder="ex: gdrive ou scw_s3">
+
+      <!-- Assistant Google Drive -->
+      <div id="guide-gdrive" class="assistant-box">
+        <h4>Connexion simple à Google Drive</h4>
+        <p class="help-text">Cliquez sur le bouton pour autoriser votre compte Google directement dans votre navigateur web.</p>
+        <div style="display:flex; gap:8px;">
+          <input type="text" id="gdrive_remote_name" value="mon_gdrive" placeholder="Nom du remote" style="width:50%;">
+          <button type="button" class="btn-secondary" id="btn-oauth-gdrive">Connecter Google</button>
+        </div>
       </div>
+
+      <!-- Assistant Scaleway S3 -->
+      <div id="guide-scaleway" class="assistant-box" style="display:none;">
+        <h4>Identifiants Scaleway S3</h4>
+        <div class="form-group" style="margin-bottom:8px;">
+          <input type="text" id="scw_access_key" placeholder="Access Key (SCW...)">
+        </div>
+        <div class="form-group" style="margin-bottom:8px;">
+          <input type="password" id="scw_secret_key" placeholder="Secret Key">
+        </div>
+        <div style="display:flex; gap:8px;">
+          <input type="text" id="scw_region" value="fr-par" placeholder="Région (ex: fr-par)">
+          <button type="button" class="btn-secondary" id="btn-save-scw">Valider clés S3</button>
+        </div>
+      </div>
+
+      <!-- Champs généraux simplifiés -->
+      <div class="form-group">
+        <label>Nom d'affichage du disque :</label>
+        <input type="text" id="label" placeholder="ex: Google Drive Pro">
+      </div>
+
+      <div class="form-group">
+        <label>Remote Rclone sélectionné :</label>
+        <input type="text" id="remote_name" placeholder="ex: mon_gdrive ou mon_s3">
+        <div class="help-text">Rempli automatiquement par les assistants ci-dessus.</div>
+      </div>
+
       <div class="form-group">
         <label>Lettre de lecteur (Windows) :</label>
-        <input type="text" id="mount_point" placeholder="ex: G: ou S:">
+        <input type="text" id="mount_point" value="G:">
+        <div class="help-text">Une lettre libre comme G:, H:, S:</div>
       </div>
+
       <div class="form-group">
         <label>Dossier local de synchronisation :</label>
-        <input type="text" id="sync_dir" placeholder="ex: C:\Users\Public\Desktop\Sync">
+        <input type="text" id="sync_dir" placeholder="C:\Users\VotreNom\Documents\CloudSync">
       </div>
+
+      <!-- Sens de synchronisation avec Double Sens -->
       <div class="form-group">
         <label>Sens de la synchronisation :</label>
         <select id="sync_direction">
-          <option value="local_to_remote">Local -> Cloud</option>
-          <option value="remote_to_local">Cloud -> Local</option>
+          <option value="bidirectional" selected>Double sens (Bidirectionnel / Miroir bilatéral)</option>
+          <option value="local_to_remote">Local -> Cloud uniquement (Sauvegarde)</option>
+          <option value="remote_to_local">Cloud -> Local uniquement (Téléchargement)</option>
         </select>
+        <div class="help-text" id="sync_help">
+          En <b>double sens</b>, toute modification locale monte sur le Cloud, et toute modification sur le Cloud descend sur votre PC.
+        </div>
       </div>
+
       <div class="form-group">
-        <label>Politique de conflit :</label>
-        <select id="conflict_mode">
-          <option value="copy">Copie simple (Conserver les orphelins)</option>
-          <option value="sync">Miroir strict (Écrasement miroir)</option>
-          <option value="backup">Sauvegarde des écrasements dans _backup</option>
-        </select>
+        <label><input type="checkbox" id="auto_mount" checked> Monter automatiquement ce disque au démarrage du PC</label>
       </div>
-      <div class="form-group">
-        <label><input type="checkbox" id="auto_mount"> Monter automatiquement à l'ouverture de session</label>
-      </div>
+
       <div style="text-align: right; margin-top: 20px;">
-        <button class="btn-blue" id="btn-submit">Enregistrer</button>
-        <button class="btn-gray" id="btn-cancel">Annuler</button>
+        <button class="btn-secondary" id="btn-cancel">Annuler</button>
+        <button class="btn-primary" id="btn-submit">Créer le Disque</button>
       </div>
     </div>
   </div>
@@ -153,17 +252,39 @@
 
     async function checkSystem(invoke) {
       const box = document.getElementById("system-alert");
+      const btnInstall = document.getElementById("btn-install-rclone");
       try {
         const res = await invoke("check_system_dependencies");
-        box.style.display = "block";
-        box.textContent = res.message;
-        box.className = (res.rclone_installed && res.fuse_or_winfsp_installed)
-          ? "alert-banner alert-success"
-          : "alert-banner alert-warning";
+        box.style.display = "flex";
+        document.getElementById("alert-text").textContent = res.message;
+        
+        if (res.rclone_installed && res.fuse_or_winfsp_installed) {
+          box.className = "alert-banner alert-success";
+          btnInstall.style.display = "none";
+        } else {
+          box.className = "alert-banner alert-warning";
+          if (!res.rclone_installed) {
+            btnInstall.style.display = "inline-block";
+            btnInstall.onclick = async () => {
+              btnInstall.textContent = "Installation...";
+              btnInstall.disabled = true;
+              try {
+                const ok = await invoke("install_rclone");
+                alert(ok);
+                checkSystem(invoke);
+              } catch(e) {
+                alert("Erreur: " + e);
+              } finally {
+                btnInstall.textContent = "Installer Rclone";
+                btnInstall.disabled = false;
+              }
+            };
+          }
+        }
       } catch (err) {
-        box.style.display = "block";
+        box.style.display = "flex";
         box.className = "alert-banner alert-warning";
-        box.textContent = "Diagnostic système impossible : " + err;
+        document.getElementById("alert-text").textContent = "Diagnostic: " + err;
       }
     }
 
@@ -172,7 +293,7 @@
       try {
         const drives = await invoke("get_drives");
         if (!drives || drives.length === 0) {
-          list.innerHTML = '<div class="empty-state">Aucun disque configuré. Cliquez sur "+ Ajouter un Disque" pour commencer.</div>';
+          list.innerHTML = '<div class="empty-state">Aucun disque configuré.<br>Cliquez sur <b>"+ Ajouter un Disque"</b> pour commencer.</div>';
           return;
         }
 
@@ -181,17 +302,24 @@
           const isMounted = await invoke("check_mount", { mountPoint: d.mount_point });
           const card = document.createElement("div");
           card.className = "card";
+          
+          let syncLabel = "Double sens";
+          if (d.sync_direction === "local_to_remote") syncLabel = "Local -> Cloud";
+          if (d.sync_direction === "remote_to_local") syncLabel = "Cloud -> Local";
+
           card.innerHTML = `
-            <div>
-              <strong>${d.label}</strong> <code style="background:#eee; padding:2px 6px;">${d.mount_point}</code>
-              <br><small style="color:#666;">${d.provider_type} (${d.remote_name}) ${d.auto_mount ? '• Automount actif' : ''}</small>
+            <div class="card-info">
+              <strong>${d.label}</strong>
+              <span class="badge">${d.mount_point}</span>
+              <span class="badge" style="background:#e0e7ff; color:#3730a3;">${syncLabel}</span>
+              <div class="card-sub">${d.provider_type} (${d.remote_name}) ${d.auto_mount ? '• Démarrage auto actif' : ''}</div>
             </div>
             <div>
-              <button class="${isMounted ? 'btn-green' : 'btn-red'}" id="mount-${d.id}">
-                ${isMounted ? 'Démonter (ON)' : 'Monter (OFF)'}
+              <button class="${isMounted ? 'btn-success' : 'btn-danger'}" id="mount-${d.id}">
+                ${isMounted ? 'Connecté (ON)' : 'Déconnecté (OFF)'}
               </button>
-              <button class="btn-blue" id="sync-${d.id}">Synchroniser</button>
-              <button class="btn-gray" id="del-${d.id}">Supprimer</button>
+              <button class="btn-primary" id="sync-${d.id}">Synchroniser</button>
+              <button class="btn-secondary" id="del-${d.id}">Supprimer</button>
             </div>
           `;
           list.appendChild(card);
@@ -202,7 +330,7 @@
           };
 
           document.getElementById(`sync-${d.id}`).onclick = async () => {
-            alert("Lancement de la synchronisation Rclone...");
+            alert(`Lancement de la synchronisation (${syncLabel})...`);
             try {
               const res = await invoke("run_sync", { drive: d });
               alert(res);
@@ -225,28 +353,89 @@
 
     document.addEventListener("DOMContentLoaded", () => {
       const modal = document.getElementById("modal");
+      const invoke = getInvoke();
+
       document.getElementById("btn-open-modal").onclick = () => { modal.style.display = "flex"; };
       document.getElementById("btn-cancel").onclick = () => { modal.style.display = "none"; };
 
-      const invoke = getInvoke();
-      if (!invoke) {
-        const box = document.getElementById("system-alert");
-        box.style.display = "block";
-        box.className = "alert-banner alert-warning";
-        box.textContent = "Attention : initialisation du pont IPC Tauri en cours ou bloquée.";
-        return;
-      }
+      // Gestion dynamique de l'affichage selon le fournisseur choisi
+      const providerSelect = document.getElementById("provider_type");
+      const guideGdrive = document.getElementById("guide-gdrive");
+      const guideScaleway = document.getElementById("guide-scaleway");
+      const remoteInput = document.getElementById("remote_name");
+
+      providerSelect.onchange = () => {
+        const val = providerSelect.value;
+        guideGdrive.style.display = (val === "Google Drive") ? "block" : "none";
+        guideScaleway.style.display = (val === "Scaleway S3") ? "block" : "none";
+        if (val === "Google Drive") remoteInput.value = document.getElementById("gdrive_remote_name").value;
+        if (val === "Scaleway S3") remoteInput.value = "scaleway_s3";
+      };
+
+      // Assistant Google OAuth
+      document.getElementById("btn-oauth-gdrive").onclick = async () => {
+        const name = document.getElementById("gdrive_remote_name").value.trim() || "mon_gdrive";
+        remoteInput.value = name;
+        try {
+          const msg = await invoke("start_google_drive_oauth", { remoteName: name });
+          alert(msg);
+        } catch(e) {
+          alert("Erreur OAuth Google : " + e);
+        }
+      };
+
+      // Assistant Scaleway S3
+      document.getElementById("btn-save-scw").onclick = async () => {
+        const accessKey = document.getElementById("scw_access_key").value.trim();
+        const secretKey = document.getElementById("scw_secret_key").value.trim();
+        const region = document.getElementById("scw_region").value.trim() || "fr-par";
+        const endpoint = `s3.${region}.scw.cloud`;
+
+        if (!accessKey || !secretKey) {
+          alert("Veuillez saisir votre Access Key et Secret Key Scaleway.");
+          return;
+        }
+
+        try {
+          const msg = await invoke("configure_scaleway_remote", {
+            remoteName: "scaleway_s3",
+            accessKey,
+            secretKey,
+            region,
+            endpoint
+          });
+          remoteInput.value = "scaleway_s3";
+          alert(msg);
+        } catch (e) {
+          alert("Erreur de configuration Scaleway : " + e);
+        }
+      };
+
+      // Explications dynamiques sur le sens de synchronisation
+      document.getElementById("sync_direction").onchange = (e) => {
+        const h = document.getElementById("sync_help");
+        if (e.target.value === "bidirectional") {
+          h.innerHTML = "En <b>double sens</b>, toute modification locale monte sur le Cloud, et toute modification sur le Cloud descend sur votre PC.";
+        } else if (e.target.value === "local_to_remote") {
+          h.innerHTML = "En <b>Local -> Cloud</b>, le contenu de votre ordinateur est copié vers le Cloud sans modifier vos fichiers locaux.";
+        } else {
+          h.innerHTML = "En <b>Cloud -> Local</b>, les fichiers du Cloud sont téléchargés sur votre ordinateur.";
+        }
+      };
+
+      if (!invoke) return;
 
       checkSystem(invoke);
       refreshDrives(invoke);
 
+      // Validation et enregistrement du disque
       document.getElementById("btn-submit").onclick = async () => {
         const label = document.getElementById("label").value.trim();
-        const remote = document.getElementById("remote_name").value.trim();
-        const mp = document.getElementById("mount_point").value.trim();
+        const remote = remoteInput.value.trim();
+        const mount = document.getElementById("mount_point").value.trim();
 
-        if (!label || !remote || !mp) {
-          alert("Les champs Nom, Remote Rclone et Lettre de lecteur sont obligatoires.");
+        if (!label || !remote || !mount) {
+          alert("Veuillez renseigner le nom, le remote et la lettre de montage.");
           return;
         }
 
@@ -254,11 +443,11 @@
           id: "d_" + Date.now().toString(36),
           label: label,
           remote_name: remote,
-          provider_type: document.getElementById("provider_type").value,
-          mount_point: mp,
+          provider_type: providerSelect.value,
+          mount_point: mount,
           sync_local_dir: document.getElementById("sync_dir").value.trim(),
           sync_direction: document.getElementById("sync_direction").value,
-          conflict_mode: document.getElementById("conflict_mode").value,
+          conflict_mode: "copy",
           auto_mount: document.getElementById("auto_mount").checked
         };
 
@@ -266,11 +455,9 @@
           await invoke("save_drive", { drive });
           modal.style.display = "none";
           document.getElementById("label").value = "";
-          document.getElementById("remote_name").value = "";
-          document.getElementById("mount_point").value = "";
           refreshDrives(invoke);
         } catch (e) {
-          alert("Erreur d'enregistrement : " + e);
+          alert("Erreur lors de l'enregistrement : " + e);
         }
       };
     });
