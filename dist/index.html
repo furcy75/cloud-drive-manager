@@ -23,7 +23,6 @@
     }
     .alert-warning { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
     .alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-    
     .card {
       background: white;
       border-radius: 8px;
@@ -45,6 +44,7 @@
     .btn-green { background: #2e7d32; color: white; }
     .btn-red { background: #c62828; color: white; }
     .btn-blue { background: #1976d2; color: white; }
+    .btn-gray { background: #757575; color: white; }
     .empty-state {
       background: white;
       padding: 30px;
@@ -83,68 +83,197 @@
 <body>
   <h2>Gestionnaire de Disques Cloud</h2>
 
-  <!-- Bannière d'état des composants rclone/pilotes -->
   <div id="system-alert" class="alert-banner"></div>
 
   <button class="btn-blue" id="btn-open-modal">+ Ajouter un Disque</button>
 
   <div id="drive-list" style="margin-top: 20px;">
-    <div class="empty-state">Chargement de vos disques...</div>
+    <div class="empty-state">Chargement des lecteurs...</div>
   </div>
 
-  <!-- Fenêtre de paramétrage du disque -->
+  <!-- Modal de configuration -->
   <div id="modal" class="modal">
     <div class="modal-content">
-      <h3 style="margin-top:0;">Configuration du Disque Cloud</h3>
+      <h3 style="margin-top:0;">Paramètres du Lecteur Cloud</h3>
       <div class="form-group">
-        <label>Nom personnalisé du disque :</label>
-        <input type="text" id="label" placeholder="ex: Mon Drive Pro">
+        <label>Nom du volume :</label>
+        <input type="text" id="label" placeholder="ex: Mon Google Drive">
       </div>
       <div class="form-group">
-        <label>Type de stockage :</label>
+        <label>Type de cloud :</label>
         <select id="provider_type">
           <option value="Google Drive">Google Drive</option>
           <option value="Scaleway S3">Scaleway S3</option>
-          <option value="Autre / Rclone">Autre stockage Rclone</option>
+          <option value="Autre Rclone">Autre stockage Rclone</option>
         </select>
       </div>
       <div class="form-group">
-        <label>Nom du remote dans Rclone :</label>
-        <input type="text" id="remote_name" placeholder="ex: gdrive ou scaleway_s3">
+        <label>Remote Rclone associé :</label>
+        <input type="text" id="remote_name" placeholder="ex: gdrive ou scw_s3">
       </div>
       <div class="form-group">
-        <label>Point de montage / Lettre :</label>
-        <input type="text" id="mount_point" placeholder="ex: G: sous Windows, ou ~/Drives/Pro sous Linux">
+        <label>Lettre de lecteur (Windows) :</label>
+        <input type="text" id="mount_point" placeholder="ex: G: ou S:">
       </div>
       <div class="form-group">
         <label>Dossier local de synchronisation :</label>
-        <input type="text" id="sync_dir" placeholder="ex: C:\Users\Nom\Desktop\Sync ou ~/Desktop/Sync">
+        <input type="text" id="sync_dir" placeholder="ex: C:\Users\Public\Desktop\Sync">
       </div>
       <div class="form-group">
-        <label>Sens de synchro :</label>
+        <label>Sens de la synchronisation :</label>
         <select id="sync_direction">
-          <option value="local_to_remote">Local vers Cloud (Upload)</option>
-          <option value="remote_to_local">Cloud vers Local (Download)</option>
+          <option value="local_to_remote">Local -> Cloud</option>
+          <option value="remote_to_local">Cloud -> Local</option>
         </select>
       </div>
       <div class="form-group">
-        <label>Gestion des conflits :</label>
+        <label>Politique de conflit :</label>
         <select id="conflict_mode">
-          <option value="copy">Copie simple (Pas d'écrasement destructif)</option>
-          <option value="sync">Miroir strict (Supprime la cible pour refléter la source)</option>
-          <option value="backup">Backup des remplacements (dans _backup)</option>
+          <option value="copy">Copie simple (Conserver les orphelins)</option>
+          <option value="sync">Miroir strict (Écrasement miroir)</option>
+          <option value="backup">Sauvegarde des écrasements dans _backup</option>
         </select>
       </div>
       <div class="form-group">
-        <label><input type="checkbox" id="auto_mount"> Monter au boot du système (sans ouvrir l'application)</label>
+        <label><input type="checkbox" id="auto_mount"> Monter automatiquement à l'ouverture de session</label>
       </div>
       <div style="text-align: right; margin-top: 20px;">
         <button class="btn-blue" id="btn-submit">Enregistrer</button>
-        <button id="btn-cancel">Annuler</button>
+        <button class="btn-gray" id="btn-cancel">Annuler</button>
       </div>
     </div>
   </div>
 
-  <script src="./src/main.js"></script>
+  <script>
+    function getInvoke() {
+      if (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) return window.__TAURI__.core.invoke;
+      if (window.__TAURI__ && window.__TAURI__.invoke) return window.__TAURI__.invoke;
+      return null;
+    }
+
+    async function checkSystem(invoke) {
+      const box = document.getElementById("system-alert");
+      try {
+        const res = await invoke("check_system_dependencies");
+        box.style.display = "block";
+        box.textContent = res.message;
+        box.className = (res.rclone_installed && res.fuse_or_winfsp_installed)
+          ? "alert-banner alert-success"
+          : "alert-banner alert-warning";
+      } catch (err) {
+        box.style.display = "block";
+        box.className = "alert-banner alert-warning";
+        box.textContent = "Diagnostic système impossible : " + err;
+      }
+    }
+
+    async function refreshDrives(invoke) {
+      const list = document.getElementById("drive-list");
+      try {
+        const drives = await invoke("get_drives");
+        if (!drives || drives.length === 0) {
+          list.innerHTML = '<div class="empty-state">Aucun disque configuré. Cliquez sur "+ Ajouter un Disque" pour commencer.</div>';
+          return;
+        }
+
+        list.innerHTML = "";
+        for (const d of drives) {
+          const isMounted = await invoke("check_mount", { mountPoint: d.mount_point });
+          const card = document.createElement("div");
+          card.className = "card";
+          card.innerHTML = `
+            <div>
+              <strong>${d.label}</strong> <code style="background:#eee; padding:2px 6px;">${d.mount_point}</code>
+              <br><small style="color:#666;">${d.provider_type} (${d.remote_name}) ${d.auto_mount ? '• Automount actif' : ''}</small>
+            </div>
+            <div>
+              <button class="${isMounted ? 'btn-green' : 'btn-red'}" id="mount-${d.id}">
+                ${isMounted ? 'Démonter (ON)' : 'Monter (OFF)'}
+              </button>
+              <button class="btn-blue" id="sync-${d.id}">Synchroniser</button>
+              <button class="btn-gray" id="del-${d.id}">Supprimer</button>
+            </div>
+          `;
+          list.appendChild(card);
+
+          document.getElementById(`mount-${d.id}`).onclick = async () => {
+            await invoke("toggle_mount", { drive: d });
+            refreshDrives(invoke);
+          };
+
+          document.getElementById(`sync-${d.id}`).onclick = async () => {
+            alert("Lancement de la synchronisation Rclone...");
+            try {
+              const res = await invoke("run_sync", { drive: d });
+              alert(res);
+            } catch (e) {
+              alert("Erreur de synchronisation : " + e);
+            }
+          };
+
+          document.getElementById(`del-${d.id}`).onclick = async () => {
+            if (confirm(`Supprimer le lecteur "${d.label}" ?`)) {
+              await invoke("delete_drive", { id: d.id });
+              refreshDrives(invoke);
+            }
+          };
+        }
+      } catch (err) {
+        list.innerHTML = `<div class="empty-state" style="color:red;">Erreur: ${err}</div>`;
+      }
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+      const modal = document.getElementById("modal");
+      document.getElementById("btn-open-modal").onclick = () => { modal.style.display = "flex"; };
+      document.getElementById("btn-cancel").onclick = () => { modal.style.display = "none"; };
+
+      const invoke = getInvoke();
+      if (!invoke) {
+        const box = document.getElementById("system-alert");
+        box.style.display = "block";
+        box.className = "alert-banner alert-warning";
+        box.textContent = "Attention : initialisation du pont IPC Tauri en cours ou bloquée.";
+        return;
+      }
+
+      checkSystem(invoke);
+      refreshDrives(invoke);
+
+      document.getElementById("btn-submit").onclick = async () => {
+        const label = document.getElementById("label").value.trim();
+        const remote = document.getElementById("remote_name").value.trim();
+        const mp = document.getElementById("mount_point").value.trim();
+
+        if (!label || !remote || !mp) {
+          alert("Les champs Nom, Remote Rclone et Lettre de lecteur sont obligatoires.");
+          return;
+        }
+
+        const drive = {
+          id: "d_" + Date.now().toString(36),
+          label: label,
+          remote_name: remote,
+          provider_type: document.getElementById("provider_type").value,
+          mount_point: mp,
+          sync_local_dir: document.getElementById("sync_dir").value.trim(),
+          sync_direction: document.getElementById("sync_direction").value,
+          conflict_mode: document.getElementById("conflict_mode").value,
+          auto_mount: document.getElementById("auto_mount").checked
+        };
+
+        try {
+          await invoke("save_drive", { drive });
+          modal.style.display = "none";
+          document.getElementById("label").value = "";
+          document.getElementById("remote_name").value = "";
+          document.getElementById("mount_point").value = "";
+          refreshDrives(invoke);
+        } catch (e) {
+          alert("Erreur d'enregistrement : " + e);
+        }
+      };
+    });
+  </script>
 </body>
 </html>

@@ -1,12 +1,11 @@
 {
-  "name": "tauri-app",
-  "private": true,
+  "name": "cloud-drive-manager",
   "version": "0.1.0",
-  "type": "module",
+  "private": true,
   "scripts": {
     "tauri": "tauri"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2"
+    "@tauri-apps/cli": "^2.0.0"
   }
 }

@@ -23,13 +23,11 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      # Compilation directe de l'exécutable Rust/Tauri sans créer d'installeur lourd
       - name: Build Portable EXE
         run: npm run tauri build -- --no-bundle
 
-      # Récupération unique du .exe portable brut
       - name: Upload Windows EXE
         uses: actions/upload-artifact@v4
         with:
-          name: cloud-drive-manager-portable
+          name: CloudDriveManager-Portable
           path: src-tauri/target/release/cloud-drive-manager.exe

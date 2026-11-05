@@ -68,16 +68,10 @@ fn check_system_dependencies() -> SystemCheckStatus {
     };
 
     let msg = match (rclone_ok, driver_ok) {
-        (true, true) => "Système prêt. Rclone et le pilote FUSE/WinFsp sont détectés.".into(),
-        (false, true) => "Rclone est manquant ! Veuillez installer rclone (ou le placer dans le PATH).".into(),
-        (true, false) => {
-            if cfg!(target_os = "windows") {
-                "WinFsp est manquant ! Vous devez installer WinFsp pour pouvoir monter des disques sous Windows.".into()
-            } else {
-                "FUSE (fuse3) est introuvable. Installez fuse3 via votre gestionnaire de paquets.".into()
-            }
-        }
-        (false, false) => "Rclone ET le pilote de montage (WinFsp/FUSE) sont manquants sur cette machine.".into(),
+        (true, true) => "Système opérationnel : Rclone et WinFsp/FUSE sont détectés.".into(),
+        (false, true) => "Attention : Rclone est introuvable dans le PATH système.".into(),
+        (true, false) => "Attention : WinFsp (pilote de disque FUSE) n'est pas installé sur ce PC.".into(),
+        (false, false) => "Rclone et WinFsp sont tous les deux manquants sur cette machine.".into(),
     };
 
     SystemCheckStatus {
@@ -204,7 +198,7 @@ fn toggle_mount(drive: CloudDrive) -> Result<bool, String> {
         Command::new("rclone")
             .args(&args)
             .spawn()
-            .map_err(|e| format!("Échec du lancement de Rclone: {}", e))?;
+            .map_err(|e| format!("Échec du lancement Rclone: {}", e))?;
 
         Ok(true)
     }
@@ -245,7 +239,7 @@ fn run_sync(drive: CloudDrive) -> Result<String, String> {
         .map_err(|e| e.to_string())?;
 
     if output.status.success() {
-        Ok("Synchronisation terminée avec succès".to_string())
+        Ok("Synchronisation terminée avec succès.".to_string())
     } else {
         Err(String::from_utf8_lossy(&output.stderr).to_string())
     }
@@ -269,28 +263,6 @@ fn sync_system_automount(drive: &CloudDrive) {
                 .output()
                 .ok();
         }
-    } else {
-        let mut unit_dir = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
-        unit_dir.push("systemd");
-        unit_dir.push("user");
-        fs::create_dir_all(&unit_dir).ok();
-
-        let unit_name = format!("rclone-mount-{}.service", drive.id);
-        let unit_file = unit_dir.join(&unit_name);
-
-        if drive.auto_mount {
-            let content = format!(
-                "[Unit]\nDescription=Rclone Mount {}\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=notify\nExecStart=rclone mount {}: {} --vfs-cache-mode full --volname \"{}\"\nExecStop=fusermount -u {}\nRestart=on-failure\nRestartSec=10\n\n[Install]\nWantedBy=default.target\n",
-                drive.label, drive.remote_name, drive.mount_point, drive.label, drive.mount_point
-            );
-            fs::write(&unit_file, content).ok();
-            Command::new("systemctl").args(["--user", "daemon-reload"]).output().ok();
-            Command::new("systemctl").args(["--user", "enable", &unit_name]).output().ok();
-        } else if unit_file.exists() {
-            Command::new("systemctl").args(["--user", "disable", &unit_name]).output().ok();
-            fs::remove_file(unit_file).ok();
-            Command::new("systemctl").args(["--user", "daemon-reload"]).output().ok();
-        }
     }
 }
 
@@ -306,5 +278,5 @@ fn main() {
             run_sync
         ])
         .run(tauri::generate_context!())
-        .expect("Erreur lors de l'exécution de l'application Tauri");
+        .expect("Erreur lors de l'exécution de l'application");
 }
