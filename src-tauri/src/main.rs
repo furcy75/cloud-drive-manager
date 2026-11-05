@@ -3,7 +3,7 @@
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -11,13 +11,13 @@ pub struct CloudDrive {
     pub id: String,
     pub label: String,
     pub remote_name: String,
-    pub remote_subpath: String, // Nouveau: sous-dossier sur le Drive (ex: "Documents" ou vide pour racine)
+    pub remote_subpath: String,
     pub provider_type: String,
     pub mount_point: String,
     pub sync_local_dir: String,
-    pub sync_direction: String, // "bidirectional", "local_to_remote", "remote_to_local"
+    pub sync_direction: String,
     pub conflict_mode: String,
-    pub streaming_mode: bool,   // Nouveau: streaming direct à la volée sans mise en cache locale lourde
+    pub streaming_mode: bool,
     pub auto_mount: bool,
 }
 
@@ -55,11 +55,28 @@ fn get_db_connection() -> Result<Connection, String> {
         [],
     ).map_err(|e| e.to_string())?;
 
-    // Migration automatique si la table existait sans les nouvelles colonnes
     conn.execute("ALTER TABLE drives ADD COLUMN remote_subpath TEXT NOT NULL DEFAULT ''", []).ok();
     conn.execute("ALTER TABLE drives ADD COLUMN streaming_mode INTEGER NOT NULL DEFAULT 1", []).ok();
 
     Ok(conn)
+}
+
+#[tauri::command]
+fn get_available_drive_letters() -> Vec<String> {
+    if !cfg!(target_os = "windows") {
+        return vec!["/mnt/cloud_drive".into(), "~/Drives/Cloud".into()];
+    }
+
+    let mut available = Vec::new();
+    // Évalue les lettres de D à Z (en réservant C:)
+    for b in b'D'..=b'Z' {
+        let letter = format!("{}:", b as char);
+        let path_str = format!("{}\\", letter);
+        if !Path::new(&path_str).exists() {
+            available.push(letter);
+        }
+    }
+    available
 }
 
 #[tauri::command]
@@ -77,10 +94,10 @@ fn check_system_dependencies() -> SystemCheckStatus {
     };
 
     let msg = match (rclone_ok, driver_ok) {
-        (true, true) => "Système opérationnel : Rclone et pilote de montage détectés.".into(),
+        (true, true) => "Système prêt. Rclone et le pilote de disque sont opérationnels.".into(),
         (false, true) => "Rclone est manquant. Cliquez sur 'Installer Rclone'.".into(),
-        (true, false) => "Pilote WinFsp/FUSE introuvable. Installez WinFsp sous Windows.".into(),
-        (false, false) => "Rclone et WinFsp sont manquants.".into(),
+        (true, false) => "Pilote WinFsp manquant sous Windows pour le montage de disque.".into(),
+        (false, false) => "Rclone et WinFsp sont absents sur ce PC.".into(),
     };
 
     SystemCheckStatus {
@@ -116,7 +133,7 @@ fn install_rclone() -> Result<String, String> {
             .arg("-c")
             .arg("curl https://rclone.org/install.sh | sudo bash")
             .output()
-            .map_err(|e| format!("Erreur script Linux: {}", e))?;
+            .map_err(|e| format!("Erreur script: {}", e))?;
 
         if output.status.success() {
             Ok("Rclone installé avec succès.".into())
@@ -126,7 +143,6 @@ fn install_rclone() -> Result<String, String> {
     }
 }
 
-// Nouveau : lister les sous-dossiers distants d'un remote Google Drive ou S3
 #[tauri::command]
 fn list_remote_folders(remote_name: String, base_path: String) -> Result<Vec<String>, String> {
     let target = if base_path.is_empty() {
@@ -172,7 +188,7 @@ fn configure_scaleway_remote(remote_name: String, access_key: String, secret_key
         .map_err(|e| format!("Échec d'exécution Rclone: {}", e))?;
 
     if output.status.success() {
-        Ok(format!("Le stockage Scaleway S3 '{}' a été configuré avec succès !", remote_name))
+        Ok(format!("Le stockage Scaleway S3 '{}' est prêt.", remote_name))
     } else {
         Err(String::from_utf8_lossy(&output.stderr).to_string())
     }
@@ -185,7 +201,7 @@ fn start_google_drive_oauth(remote_name: String) -> Result<String, String> {
         .spawn()
         .map_err(|e| format!("Impossible d'ouvrir le navigateur: {}", e))?;
 
-    Ok("La fenêtre d'autorisation Google s'est ouverte dans votre navigateur. Validez l'accès puis enregistrez le disque.".into())
+    Ok("Navigateur ouvert pour l'authentification Google. Validez l'accès puis continuez.".into())
 }
 
 #[tauri::command]
@@ -293,7 +309,7 @@ fn toggle_mount(drive: CloudDrive) -> Result<bool, String> {
             fs::create_dir_all(&drive.mount_point).ok();
         }
 
-        let full_remote_source = if drive.remote_subpath.is_empty() {
+        let full_remote = if drive.remote_subpath.is_empty() {
             format!("{}:", drive.remote_name)
         } else {
             format!("{}:{}", drive.remote_name, drive.remote_subpath.trim_matches('/'))
@@ -301,13 +317,12 @@ fn toggle_mount(drive: CloudDrive) -> Result<bool, String> {
 
         let mut args = vec![
             "mount".to_string(),
-            full_remote_source,
+            full_remote,
             drive.mount_point.clone(),
             "--volname".to_string(),
             drive.label.clone(),
         ];
 
-        // Mode Streaming direct (zéro cache de disque local, lecture directe chunk par chunk)
         if drive.streaming_mode {
             args.extend([
                 "--vfs-cache-mode".to_string(),
@@ -331,14 +346,15 @@ fn toggle_mount(drive: CloudDrive) -> Result<bool, String> {
         Command::new("rclone")
             .args(&args)
             .spawn()
-            .map_err(|e| format!("Échec du lancement Rclone: {}", e))?;
+            .map_err(|e| format!("Échec montage Rclone: {}", e))?;
 
         Ok(true)
     }
 }
 
+// Synchronisation avec support de simulation Dry-Run
 #[tauri::command]
-fn run_sync(drive: CloudDrive) -> Result<String, String> {
+fn run_sync(drive: CloudDrive, dry_run: bool) -> Result<String, String> {
     fs::create_dir_all(&drive.sync_local_dir).ok();
 
     let local_path = drive.sync_local_dir.clone();
@@ -348,43 +364,56 @@ fn run_sync(drive: CloudDrive) -> Result<String, String> {
         format!("{}:{}", drive.remote_name, drive.remote_subpath.trim_matches('/'))
     };
 
-    let output = if drive.sync_direction == "bidirectional" {
-        let res = Command::new("rclone")
-            .args(["bisync", &local_path, &remote_target, "--verbose"])
-            .output();
+    let mut args = Vec::new();
 
-        match res {
-            Ok(out) if out.status.success() => out,
-            _ => {
-                Command::new("rclone")
-                    .args(["bisync", &local_path, &remote_target, "--resync", "--verbose"])
-                    .output()
-                    .map_err(|e| format!("Échec bisync: {}", e))?
-            }
+    if drive.sync_direction == "bidirectional" {
+        args.extend(["bisync", &local_path, &remote_target, "--verbose"]);
+        if dry_run {
+            args.push("--dry-run");
         }
     } else {
         let (src, dst) = if drive.sync_direction == "local_to_remote" {
-            (local_path, remote_target)
+            (local_path.clone(), remote_target.clone())
         } else {
-            (remote_target, local_path)
+            (remote_target.clone(), local_path.clone())
         };
 
-        let mut args = vec!["rclone".to_string()];
-        match drive.conflict_mode.as_str() {
-            "sync" => args.extend(["sync".to_string(), src, dst]),
-            _ => args.extend(["copy".to_string(), src, dst]),
+        if drive.conflict_mode == "sync" {
+            args.push("sync");
+        } else {
+            args.push("copy");
         }
+        args.extend([src.as_str(), dst.as_str(), "--verbose"]);
+        if dry_run {
+            args.push("--dry-run");
+        }
+    }
 
-        Command::new(&args[0])
-            .args(&args[1..])
-            .output()
-            .map_err(|e| e.to_string())?
-    };
+    let output = Command::new("rclone")
+        .args(&args)
+        .output()
+        .map_err(|e| format!("Erreur exécution rclone: {}", e))?;
 
-    if output.status.success() {
-        Ok("Synchronisation terminée avec succès.".to_string())
+    let stdout_str = String::from_utf8_lossy(&output.stdout);
+    let stderr_str = String::from_utf8_lossy(&output.stderr);
+    let full_log = format!("{}\n{}", stdout_str, stderr_str);
+
+    if dry_run {
+        let simulated_lines: Vec<&str> = full_log
+            .lines()
+            .filter(|l| l.contains("NOTICE") || l.contains("Transferring") || l.contains("Copied") || l.contains("Deleted"))
+            .take(20)
+            .collect();
+
+        if simulated_lines.is_empty() {
+            Ok("Simulation terminée : Aucun fichier à synchroniser (vos dossiers sont déjà parfaitement synchronisés).".into())
+        } else {
+            Ok(format!("Simulation [Dry Run] réussie :\n{}", simulated_lines.join("\n")))
+        }
+    } else if output.status.success() {
+        Ok("Synchronisation terminée avec succès.".into())
     } else {
-        Err(String::from_utf8_lossy(&output.stderr).to_string())
+        Err(stderr_str.to_string())
     }
 }
 
@@ -425,6 +454,7 @@ fn sync_system_automount(drive: &CloudDrive) {
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
+            get_available_drive_letters,
             check_system_dependencies,
             install_rclone,
             list_remote_folders,
