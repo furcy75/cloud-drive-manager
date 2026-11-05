@@ -287,6 +287,10 @@ fn check_mount(mount_point: String) -> bool {
     }
 }
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+// 1. Montage détaché pour que Rclone reste actif à la fermeture de la fenêtre
 #[tauri::command]
 fn toggle_mount(drive: CloudDrive) -> Result<bool, String> {
     let currently_mounted = check_mount(drive.mount_point.clone());
@@ -315,6 +319,7 @@ fn toggle_mount(drive: CloudDrive) -> Result<bool, String> {
             format!("{}:{}", drive.remote_name, drive.remote_subpath.trim_matches('/'))
         };
 
+        let mut cmd = Command::new("rclone");
         let mut args = vec![
             "mount".to_string(),
             full_remote,
@@ -339,17 +344,31 @@ fn toggle_mount(drive: CloudDrive) -> Result<bool, String> {
             ]);
         }
 
-        if !cfg!(target_os = "windows") {
-            args.push("--daemon".to_string());
+        cmd.args(&args);
+
+        #[cfg(target_os = "windows")]
+        {
+            // CREATE_NO_WINDOW (0x08000000) + DETACHED_PROCESS (0x00000008)
+            cmd.creation_flags(0x08000000 | 0x00000008);
         }
 
-        Command::new("rclone")
-            .args(&args)
-            .spawn()
-            .map_err(|e| format!("Échec montage Rclone: {}", e))?;
+        #[cfg(not(target_os = "windows"))]
+        {
+            cmd.arg("--daemon");
+        }
+
+        cmd.spawn()
+            .map_err(|e| format!("Échec lancement Rclone détaché: {}", e))?;
 
         Ok(true)
     }
+}
+
+// 2. Exportation de la configuration et de la base de données
+#[tauri::command]
+fn export_database_json() -> Result<String, String> {
+    let drives = get_drives()?;
+    serde_json::to_string_pretty(&drives).map_err(|e| e.to_string())
 }
 
 // Synchronisation avec support de simulation Dry-Run
@@ -478,7 +497,8 @@ fn main() {
             delete_drive,
             check_mount,
             toggle_mount,
-            run_sync
+            run_sync,
+            export_database_json
         ])
         .run(tauri::generate_context!())
         .expect("Erreur lors de l'exécution de l'application");
